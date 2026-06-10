@@ -50,6 +50,7 @@ L'outil fonctionne entièrement côté navigateur. Aucune réponse, aucune saisi
 
 ## Crédits et licence
 Réalisé par Alexandra Lez.
+
 Cet outil est lui-même une ressource éducative libre, diffusée sous licence **Creative Commons Attribution 4.0 International (CC BY 4.0)**. Vous êtes libre de le réutiliser et de l'adapter, à condition d'en créditer la source.
 
 > « Partager une ressource éducative libre - Outil d'aide à la décision »  est mis à disposition selon les termes de la licence [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/deed.fr).
