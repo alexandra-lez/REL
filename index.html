@@ -8,6 +8,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
+ /* ---------- A. Lez, juin 2026 - Version 1 ---------- */
+
 <body>
   <div id="root"></div>
   <script type="text/babel" data-presets="react">
@@ -192,7 +194,7 @@ function App() {
 
     const { html, text } = buildMention(logoHtml);
 
-    // 2. Écrit dans le presse-papiers : HTML enrichi + texte + (si dispo) vraie image PNG.
+    // 2. Écrit dans le presse-papiers : HTML enrichi + texte + (si dispo) image PNG.
     if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
       try {
         const types = {
