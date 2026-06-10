@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Partager une ressource éducative libre (REL)</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+const THEMES = {
+  potentiel: { id: 'potentiel', title: "Potentiel de réutilisation", desc: "Plus vous cochez, plus la ressource gagne en valeur partagée. Rien n'est obligatoire.", items: [
+      { id: 'p1', label: "Adaptation rapide possible par un tiers." },
+      { id: 'p2', label: "Apporte une réelle nouveauté (outil, méthode, donnée)." },
+      { id: 'p3', label: "Le contenu est durable dans le temps." },
+      { id: 'p4', label: "Fichiers sources dans des formats ouverts/répandus." }
+  ]},
+  qualite: { id: 'qualite', title: "Qualité", desc: "Le niveau de finition attendu dépend de l'usage visé.", items: [
+      { id: 'q1', label: "Relecture critique effectuée par un(e) pair." },
+      { id: 'q2', label: "Ressource aboutie et utile en l'état." },
+      { id: 'q3', label: "Versionnage prévu pour les mises à jour." },
+      { id: 'q4', label: <>Respect des <a href="https://zenodo.org/records/14963025" target="_blank" rel="noopener noreferrer">Balises éditoriales du SSF</a>.</> }
+  ]},
+  rayon: { id: 'rayon', title: "Rayonnement", desc: "Ce que le partage fait gagner, au-delà de la ressource elle-même.", items: [
+      { id: 'r1', label: "Contribue à la réputation de l'auteur et de l'UdeS." },
+      { id: 'r2', label: "Inspire plus largement la communauté éducative." }
+  ]}
+};
+
+const LEGAL_ITEMS = [
+  { id: 'droit', label: "Propriété intellectuelle", desc: <>Respecte la Loi canadienne sur le droit d'auteur et la <a href="https://www.usherbrooke.ca/decouvrir/fileadmin/sites/decouvrir/documents/direction/politiques/2500-049.pdf" target="_blank" rel="noopener noreferrer">Politique sur la propriété intellectuelle</a> de l'UdeS.</> },
+  { id: 'licence', label: "Compatibilité des licences", desc: "Les contenus tiers intégrés permettent la diffusion sous CC BY." },
+  { id: 'ethique', label: "Éthique et sensibilité", desc: "Absence de données sensibles ou enjeux validés." },
+  { id: 'consent', label: "Consentements", desc: "Obtenus pour les collaborations ou captations." }
+];
+
+const LICENSES = {
+  'BY': { full: 'Attribution 4.0 International', code: 'by', reco: true, allows: "Réutilisation totale, y compris commerciale, si l'auteur est crédité." },
+  'BY-SA': { full: 'Attribution – Partage dans les mêmes conditions 4.0', code: 'by-sa', reco: true, allows: "Les œuvres dérivées doivent obligatoirement porter cette même licence." },
+  'BY-NC': { full: 'Attribution – Pas d’utilisation commerciale 4.0', code: 'by-nc', reco: false, allows: "L'usage commercial est strictement interdit." },
+  'BY-NC-SA': { full: 'Attribution – Non commercial – Partage identique 4.0', code: 'by-nc-sa', reco: false, allows: "Pas d'usage commercial, les dérivés sous même licence." },
+  'BY-ND': { full: 'Attribution – Pas de modification 4.0', code: 'by-nd', reco: false, allows: "L'œuvre doit être partagée telle quelle, sans aucune adaptation." },
+  'BY-NC-ND': { full: 'Attribution – Non commercial – Non dérivé 4.0', code: 'by-nc-nd', reco: false, allows: "La plus stricte : ni modification, ni commercialisation." }
+};
+
+const deedUrl = (code) => `https://creativecommons.org/licenses/${code}/4.0/deed.fr`;
+// Badge officiel en PNG. Pour une fiabilité maximale au déploiement, vous pouvez
+// héberger les 6 PNG dans votre dépôt et remplacer cette base par un chemin local
+// (ex. `/badges/${code}.png`) : même origine = intégration garantie à la copie.
+const badgeUrl = (code) => `https://licensebuttons.net/l/${code}/4.0/88x31.png`;
+const escHtml = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function App() {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [checks, setChecks] = useState({});
+  const [legal, setLegal] = useState({ droit: null, licence: null, ethique: null, consent: null });
+  const [verdictStatus, setVerdictStatus] = useState('neutral');
+
+  const [ans, setAns] = useState({ rights: null, adapt: null, sa: null, nc: null });
+  const [meta, setMeta] = useState({ title: '', author: '', year: new Date().getFullYear().toString() });
+  const [copied, setCopied] = useState(false);
+  const [citationFormat, setCitationFormat] = useState('standard');
+  const [logoOk, setLogoOk] = useState(true);
+
+  const part2Ref = useRef(null);
+  const sideRef = useRef(null);
+  const copyAreaRef = useRef(null);
+
+  useEffect(() => {
+    const urls = [
+      'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;450;500;600;700&display=swap',
+      'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css',
+      'https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css'
+    ];
+    const links = urls.map(href => {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet'; l.href = href;
+      document.head.appendChild(l);
+      return l;
+    });
+    const t = setTimeout(() => setIsLoaded(true), 380);
+    return () => { clearTimeout(t); links.forEach(l => { try { document.head.removeChild(l); } catch (e) {} }); };
+  }, []);
+
+  const toggleCheck = (id) => setChecks(prev => ({ ...prev, [id]: !prev[id] }));
+  const setLegalItem = (id, val) => setLegal(prev => ({ ...prev, [id]: val }));
+
+  useEffect(() => {
+    const vals = Object.values(legal);
+    const touched = vals.some(v => v !== null) || Object.values(checks).some(v => v);
+    const concern = vals.some(v => v === 'non' || v === 'verifier');
+    const allOui = vals.every(v => v === 'oui');
+    const count = (themeId) => THEMES[themeId].items.filter(i => checks[i.id]).length;
+    if (!touched) setVerdictStatus('neutral');
+    else if (concern) setVerdictStatus('red');
+    else if (!allOui) setVerdictStatus('yellow');
+    else if (count('qualite') >= 2 && count('potentiel') >= 1) setVerdictStatus('green');
+    else setVerdictStatus('yellow');
+  }, [checks, legal]);
+
+  const legalOui = LEGAL_ITEMS.filter(i => legal[i.id] === 'oui').length;
+  const legalConcern = LEGAL_ITEMS.some(i => legal[i.id] === 'non' || legal[i.id] === 'verifier');
+  const legalClear = legalOui === LEGAL_ITEMS.length;
+
+  const verdictData = {
+    neutral: { icon: 'bi-compass', title: 'Aide à la décision', msg: 'Renseignez le formulaire pour évaluer votre ressource.', color: 'var(--ink-soft)' },
+    red: { icon: 'bi-sign-stop', title: 'Arrêt requis', msg: 'Un aspect légal bloque le partage. Validez ces points avec la direction.', color: 'var(--stop)' },
+    yellow: { icon: 'bi-hourglass-split', title: 'Attention', msg: 'Complétez les aspects légaux (tout « Oui »), ou améliorez la qualité de la ressource.', color: 'var(--gold-deep)' },
+    green: { icon: 'bi-check2-circle', title: 'Feu vert', msg: "Aspects légaux respectés et ressource solide. Vous pouvez passer à l'étape 2.", color: 'var(--green-text)' }
+  }[verdictStatus];
+
+  const handleAns = (q, val) => setAns(prev => {
+    const next = { ...prev, [q]: val };
+    if (q === 'adapt' && val === 'non') next.sa = null;
+    return next;
+  });
+
+  const computeLicense = () => {
+    if (ans.adapt === 'non') return ans.nc === 'oui' ? 'BY-NC-ND' : 'BY-ND';
+    if (ans.adapt === 'oui') {
+      if (ans.nc === 'oui' && ans.sa === 'oui') return 'BY-NC-SA';
+      if (ans.nc === 'oui') return 'BY-NC';
+      if (ans.sa === 'oui') return 'BY-SA';
+      return 'BY';
+    }
+    return null;
+  };
+
+  const isPart2Ready = () => ans.rights && ans.adapt && ans.nc !== null && (ans.adapt === 'non' || ans.sa !== null);
+  const licenseCode = computeLicense();
+  const licInfo = licenseCode ? LICENSES[licenseCode] : null;
+  const showLicense = legalClear && isPart2Ready() && licInfo;
+
+  const resetAll = () => {
+    setChecks({});
+    setLegal({ droit: null, licence: null, ethique: null, consent: null });
+    setAns({ rights: null, adapt: null, sa: null, nc: null });
+    setMeta(m => ({ ...m, title: '', author: '' }));
+    setCopied(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Construit la mention (HTML + texte) à partir de l'état courant.
+  const buildMention = (logoHtml) => {
+    const t = meta.title.trim() || '[Titre]';
+    const a = meta.author.trim() || '[Auteur]';
+    const y = meta.year.trim() || '[Année]';
+    const url = deedUrl(licInfo.code);
+    let html, text;
+    if (citationFormat === 'standard') {
+      html = `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55;margin:0 0 8px">« <strong>${escHtml(t)}</strong> » © ${escHtml(y)} par ${escHtml(a)} est mis à disposition selon les termes de la licence <a href="${url}">Creative Commons ${licInfo.full} (CC ${licenseCode})</a>.</p>`;
+      text = `« ${t} » © ${y} par ${a} est mis à disposition selon les termes de la licence Creative Commons ${licInfo.full} (CC ${licenseCode}). ${url}`;
+    } else {
+      html = `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55;margin:0 0 8px">${escHtml(a)}. (${escHtml(y)}). <em>${escHtml(t)}</em>. Licence Creative Commons ${licInfo.full} (CC ${licenseCode}). <a href="${url}">${url}</a></p>`;
+      text = `${a}. (${y}). ${t}. Licence Creative Commons ${licInfo.full} (CC ${licenseCode}). ${url}`;
+    }
+    return { html: html + (logoHtml || ''), text };
+  };
+
+  const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+
+  const copyToClipboard = async () => {
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 3000); };
+
+    // 1. Tente de récupérer le badge PNG et de l'intégrer en data-URI (image embarquée).
+    let logoHtml = '';
+    let pngBlob = null;
+    if (logoOk) {
+      try {
+        const res = await fetch(badgeUrl(licInfo.code), { mode: 'cors' });
+        if (res.ok) {
+          pngBlob = await res.blob();
+          const dataUri = await blobToDataURL(pngBlob);
+          logoHtml = `<img src="${dataUri}" alt="Licence CC ${licenseCode}" style="height:31px;display:block">`;
+        }
+      } catch (e) {
+        // Téléchargement bloqué (CORS/hors ligne) : on retombe sur la référence distante.
+        logoHtml = `<img src="${badgeUrl(licInfo.code)}" alt="Licence CC ${licenseCode}" style="height:31px;display:block">`;
+        pngBlob = null;
+      }
+    }
+
+    const { html, text } = buildMention(logoHtml);
+
+    // 2. Écrit dans le presse-papiers : HTML enrichi + texte + (si dispo) vraie image PNG.
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      try {
+        const types = {
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' })
+        };
+        if (pngBlob) types['image/png'] = pngBlob;
+        await navigator.clipboard.write([new ClipboardItem(types)]);
+        return done();
+      } catch (e) { /* repli ci-dessous */ }
+    }
+
+    // 3. Repli : sélection visuelle de l'aperçu + execCommand.
+    if (copyAreaRef.current) {
+      const range = document.createRange();
+      range.selectNodeContents(copyAreaRef.current);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand('copy') ? done() : alert("Sélectionnez le texte et copiez-le manuellement (Ctrl+C)."); }
+      catch (e) { alert("Sélectionnez le texte et copiez-le manuellement (Ctrl+C)."); }
+      sel.removeAllRanges();
+    }
+  };
+
+  if (!isLoaded) return <div className="d-flex justify-content-center align-items-center vh-100" style={{ background: '#fff' }}><div className="spinner-border" style={{ width: '3rem', height: '3rem', color: '#01a54f' }}></div></div>;
+
+  return (
+    <>
+      <style>{`
+        :root {
+          --deep-green: #2a6a59;
+          --mid-green: #01a54f;
+          --green-text: #0a6e3a;
+          --gold: #e5aa39;
+          --gold-deep: #a9760f;
+          --light-green: #7fc241;
+          --bg: #ffffff;
+          --tint: #f5faf6;
+          --ink: #384741;
+          --ink-soft: #708078;
+          --line: #ebe8e0;
+          --line-soft: #f1efe9;
+          --stop: #d2664f;
+          --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+          --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+          --bs-primary: #01a54f;
+          --bs-primary-rgb: 1, 165, 79;
+        }
+
+        html { scroll-padding-top: 6.5rem; }
+        body { background-color: var(--bg); color: var(--ink); font-family: var(--font-body); }
+        @media (max-width: 991.98px) { body { padding-bottom: 4.6rem; } }
+        .app-fade { animation: appIn 0.5s ease; }
+        @keyframes appIn { from { opacity: 0; } to { opacity: 1; } }
+        h1,h2,h3,h4,h5,h6 { font-family: var(--font-display); font-optical-sizing: auto; color: var(--deep-green); }
+        .text-muted { color: var(--ink-soft) !important; }
+        a { color: var(--mid-green); text-underline-offset: 2px; }
+
+        /* ---------- Sticky topbar ---------- */
+        .topbar { position: sticky; top: 0; z-index: 1030; background: rgba(255,255,255,0.82); backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-bottom: 1px solid var(--line); }
+        .gold-rule { height: 2px; background: linear-gradient(90deg, var(--gold) 0%, var(--light-green) 55%, var(--mid-green) 100%); }
+        .topbar-inner { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 0; }
+        .brand-wrap { flex: 1 1 0; min-width: 0; }
+        .brand-eyebrow { font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; margin: 0 0 0.1rem; }
+        .brand-title { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.02rem, 1.9vw, 1.3rem); color: var(--deep-green); line-height: 1.1; margin: 0; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .reset-wrap { flex: 1 1 0; display: flex; justify-content: flex-end; }
+        .btn-ghost { background: #fff; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 2rem; padding: 0.45rem 1.05rem; font-size: 0.82rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
+        .btn-ghost:hover { border-color: var(--light-green); color: var(--deep-green); }
+
+        /* step tracker in header */
+        .step-track { display: flex; align-items: center; gap: 0.6rem; flex: 0 0 auto; }
+        .schip { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); transition: color 0.3s; }
+        .schip .dot { width: 1.45rem; height: 1.45rem; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line); font-size: 0.72rem; transition: all 0.3s; background: #fff; }
+        .schip.active { color: var(--deep-green); }
+        .schip.active .dot { border-color: var(--mid-green); color: var(--mid-green); }
+        .schip.done { color: var(--green-text); }
+        .schip.done .dot { background: var(--mid-green); border-color: var(--mid-green); color: #fff; }
+        .schip-line { width: 2rem; height: 1.5px; background: var(--line); border-radius: 2px; }
+
+        /* ---------- Hero ---------- */
+        .hero { padding: 2.8rem 0 2.4rem; }
+        .hero-kicker { text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.7rem; font-weight: 600; color: var(--gold-deep); margin: 0 0 0.85rem; display: flex; align-items: center; gap: 0.55rem; }
+        .hero-kicker::before { content: ''; width: 1.6rem; height: 2px; background: var(--gold); border-radius: 2px; }
+        .hero-title { font-weight: 600; font-size: clamp(2rem, 4.4vw, 3rem); line-height: 1.06; letter-spacing: -0.02em; color: var(--deep-green); margin: 0 0 0.9rem; }
+        .hero-title .it { font-style: italic; color: var(--mid-green); }
+        .hero-sub { color: var(--ink-soft); font-size: clamp(1rem, 1.5vw, 1.1rem); max-width: none; line-height: 1.65; margin: 0; }
+
+        /* ---------- Step headers ---------- */
+        .step-head { display: flex; align-items: center; gap: 1.1rem; margin-bottom: 1.6rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+        .step-num { font-family: var(--font-display); font-weight: 500; font-size: 1.45rem; color: var(--deep-green); width: 2.9rem; height: 2.9rem; flex: 0 0 auto; border: 1.5px solid var(--gold); border-radius: 50%; display: grid; place-items: center; background: #fff; }
+        .step-num.s2 { border-color: var(--light-green); color: var(--deep-green); }
+        .step-head h2 { font-weight: 600; font-size: clamp(1.3rem, 2.5vw, 1.8rem); margin: 0; letter-spacing: -0.01em; }
+
+        /* ---------- Panels ---------- */
+        .panel { background: #fff; border: 1px solid var(--line); border-radius: 1.15rem; box-shadow: 0 1px 2px rgba(40,71,61,0.03), 0 18px 38px -30px rgba(40,71,61,0.16); padding: 1.6rem 1.7rem; margin-bottom: 1.4rem; transition: border-color 0.25s ease, box-shadow 0.25s ease; }
+        .panel:hover { border-color: #e0ddd2; box-shadow: 0 1px 2px rgba(40,71,61,0.04), 0 22px 44px -30px rgba(40,71,61,0.22); }
+        .panel-title { font-family: var(--font-body); font-weight: 600; font-size: 1.08rem; color: var(--deep-green); margin: 0; display: flex; align-items: center; gap: 0.7rem; letter-spacing: -0.005em; }
+        .panel-title::before { content: ''; width: 1.3rem; height: 2px; background: var(--gold); flex: 0 0 auto; border-radius: 2px; }
+        .panel-cap { color: var(--ink-soft); font-size: 0.9rem; margin: 0.55rem 0 1.1rem; line-height: 1.55; }
+
+        /* legal progress meter */
+        .legal-meter { display: flex; align-items: center; gap: 0.85rem; margin: 0.2rem 0 1.3rem; }
+        .lm-track { flex: 1; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+        .lm-fill { height: 100%; border-radius: 3px; background: var(--mid-green); transition: width 0.45s ease, background 0.3s; }
+        .lm-fill.concern { background: var(--stop); }
+        .lm-caption { font-size: 0.76rem; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+        .lm-caption.ok { color: var(--green-text); }
+
+        /* ---------- Callouts ---------- */
+        .callout { background: var(--tint); border: 1px solid var(--line-soft); border-left: 3px solid var(--light-green); border-radius: 0.7rem; padding: 1rem 1.2rem; font-size: 0.92rem; color: var(--ink); line-height: 1.65; margin-bottom: 1.5rem; display: flex; gap: 0.8rem; }
+        .callout.amber { background: #fdfaf2; border-left-color: var(--gold); }
+        .callout i { color: var(--mid-green); margin-top: 0.1rem; }
+        .callout.amber i { color: var(--gold-deep); }
+        .callout b { font-family: var(--font-display); font-weight: 600; color: var(--deep-green); }
+
+        /* ---------- Check items ---------- */
+        .check-item { display: flex; align-items: flex-start; gap: 0.85rem; padding: 0.95rem 1.05rem; border: 1px solid var(--line); border-radius: 0.7rem; background: #fff; margin-bottom: 0.7rem; cursor: pointer; transition: border-color 0.18s, background 0.18s; }
+        .check-item:hover { border-color: var(--light-green); background: #fbfdf9; }
+        .check-item.checked { border-color: rgba(1,165,79,0.45); background: rgba(1,165,79,0.04); }
+        .check-item:focus-visible { outline: 3px solid rgba(1,165,79,0.28); outline-offset: 2px; }
+        .cbox { width: 1.3rem; height: 1.3rem; border: 1.6px solid #cdd6cf; border-radius: 0.35rem; flex: 0 0 auto; margin-top: 0.1rem; display: grid; place-items: center; transition: all 0.18s; background: #fff; }
+        .check-item.checked .cbox { background: var(--mid-green); border-color: var(--mid-green); }
+        .cbox::after { content: ''; width: 0.34rem; height: 0.64rem; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translateY(-1px) scale(0); transition: transform 0.2s cubic-bezier(.2,.9,.3,1.2); }
+        .check-item.checked .cbox::after { transform: rotate(45deg) translateY(-1px) scale(1); }
+        .check-label { color: var(--ink); font-weight: 450; line-height: 1.5; font-size: 0.96rem; }
+        .check-item a { color: var(--mid-green); }
+
+        /* ---------- Radio options ---------- */
+        .radio-box input[type="radio"] { display: none; }
+        .radio-box label { display: flex; flex-direction: column; justify-content: center; height: 100%; border: 1px solid var(--line); border-radius: 0.75rem; padding: 1.05rem 1.2rem; cursor: pointer; background: #fff; text-align: left; font-weight: 500; color: var(--ink); transition: all 0.18s; margin: 0; }
+        .radio-box label:hover { border-color: var(--light-green); background: #fbfdf9; }
+        .radio-box input[type="radio"]:checked + label { border-color: var(--mid-green); background: rgba(1,165,79,0.045); color: var(--green-text); box-shadow: inset 0 0 0 1px rgba(1,165,79,0.3); }
+        .radio-box input[type="radio"]:focus-visible + label { outline: 3px solid rgba(1,165,79,0.28); outline-offset: 2px; }
+
+        /* ---------- Segmented control ---------- */
+        .segmented { display: flex; background: #f4f2ea; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.3rem; gap: 0.25rem; }
+        .segmented input[type="radio"] { display: none; }
+        .segmented label { flex: 1; text-align: center; padding: 0.5rem 0.75rem; margin: 0; border-radius: 0.42rem; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: all 0.22s ease; }
+        .segmented input:checked + label.opt-oui { background: var(--mid-green); color: #fff; box-shadow: 0 2px 8px rgba(1,165,79,0.26); }
+        .segmented input:checked + label.opt-verif { background: var(--gold); color: #4a3608; box-shadow: 0 2px 8px rgba(229,170,57,0.3); }
+        .segmented input:checked + label.opt-non { background: var(--stop); color: #fff; box-shadow: 0 2px 8px rgba(210,102,79,0.28); }
+        .segmented input:focus-visible + label { outline: 2px solid var(--deep-green); outline-offset: 1px; }
+
+        /* ---------- Traffic light (signature) ---------- */
+        .verdict-panel { background: #fff; border: 1px solid var(--line); border-radius: 1.2rem; overflow: hidden; box-shadow: 0 18px 40px -30px rgba(40,71,61,0.2); }
+        .verdict-cap { padding: 0.75rem 1.2rem; background: var(--tint); color: var(--ink-soft); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.18em; text-align: center; font-weight: 600; border-bottom: 1px solid var(--line-soft); }
+        .traffic { background: #f1f4f1; border-radius: 1.4rem; padding: 0.7rem; display: inline-flex; flex-direction: column; gap: 0.6rem; box-shadow: inset 0 1px 4px rgba(40,71,61,0.06); border: 1px solid #e4e9e4; flex-shrink: 0; }
+        .bulb { width: 2rem; height: 2rem; border-radius: 50%; background: #dde4dd; transition: all 0.4s ease; box-shadow: inset 0 1px 3px rgba(40,71,61,0.12); }
+        .bulb.red.on { background: var(--stop); box-shadow: 0 0 16px rgba(210,102,79,0.55), inset 0 -1px 3px rgba(0,0,0,0.12); }
+        .bulb.yellow.on { background: var(--gold); box-shadow: 0 0 16px rgba(229,170,57,0.6), inset 0 -1px 3px rgba(0,0,0,0.1); }
+        .bulb.green.on { background: var(--mid-green); box-shadow: 0 0 16px rgba(1,165,79,0.55), inset 0 -1px 3px rgba(0,0,0,0.12); }
+        .bulb.on { animation: bulbPulse 2.6s ease-in-out infinite; }
+        @keyframes bulbPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.09); } }
+        .verdict-title { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; margin-bottom: 0.35rem; }
+
+        /* ---------- Reflect notes ---------- */
+        .reflect { border-radius: 0.75rem; padding: 1rem 1.15rem; font-size: 0.88rem; line-height: 1.6; margin: -0.35rem 0 1.5rem; border: 1px solid; }
+        .reflect.warn { background: #fdfaf2; border-color: rgba(229,170,57,0.4); color: #6e5210; }
+        .reflect.warn b { font-family: var(--font-display); color: var(--gold-deep); }
+        .reflect.gate { background: #fdf5f2; border-color: rgba(210,102,79,0.4); color: #8a4030; }
+        .reflect.gate b { font-family: var(--font-display); color: var(--stop); }
+
+        .lock-banner { background: var(--tint); border: 1px dashed rgba(42,106,89,0.3); border-radius: 0.75rem; padding: 0.95rem 1.15rem; color: var(--ink-soft); font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .lock-banner i { color: var(--gold-deep); }
+
+        /* ---------- Inputs ---------- */
+        .form-control { border: 1px solid var(--line); border-radius: 0.6rem; color: var(--ink); background: #fff; }
+        .form-control:focus { border-color: var(--mid-green); box-shadow: 0 0 0 0.2rem rgba(1,165,79,0.12); }
+        .form-floating > label { color: var(--ink-soft); }
+
+        /* ---------- Citation tabs ---------- */
+        .seg-tabs { display: flex; background: #f4f2ea; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.3rem; gap: 0.25rem; }
+        .seg-tabs button { flex: 1; border: none; background: transparent; padding: 0.5rem; border-radius: 0.42rem; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: all 0.2s; }
+        .seg-tabs button.active { background: var(--mid-green); color: #fff; box-shadow: 0 2px 6px rgba(1,165,79,0.25); }
+
+        /* ---------- Licence result (signature) ---------- */
+        .licence-card { background: #fff; border: 1px solid var(--line); border-radius: 1.2rem; overflow: hidden; box-shadow: 0 18px 46px -30px rgba(40,71,61,0.22); }
+        .lic-code { font-family: var(--font-display); font-weight: 600; font-size: 2.7rem; color: var(--deep-green); line-height: 1; letter-spacing: -0.015em; margin: 0.1rem 0; }
+        .lic-full { font-family: var(--font-display); font-style: italic; font-weight: 400; color: var(--mid-green); font-size: 1rem; }
+        .pill { display: inline-block; font-size: 0.7rem; letter-spacing: 0.05em; font-weight: 600; padding: 0.4em 0.9em; border-radius: 2rem; }
+        .pill-reco { background: rgba(1,165,79,0.12); color: var(--green-text); }
+        .pill-exc { background: rgba(229,170,57,0.18); color: var(--gold-deep); }
+        .allows-box { background: var(--tint); border: 1px solid var(--line-soft); border-radius: 0.7rem; padding: 0.85rem 1rem; font-size: 0.9rem; color: var(--ink-soft); }
+        .mention-box { background: #f8f8f5; border: 1px solid var(--line); border-radius: 0.7rem; }
+
+        /* ---------- Buttons ---------- */
+        .btn-primary-custom { background: var(--mid-green); color: #fff; border: none; border-radius: 0.6rem; font-weight: 600; transition: all 0.2s; }
+        .btn-primary-custom:hover { background: #018a42; color: #fff; box-shadow: 0 8px 20px -8px rgba(1,165,79,0.5); }
+        .btn-pill { border-radius: 2rem; }
+
+        /* ---------- Mobile status bar ---------- */
+        .mobile-status { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040; background: rgba(255,255,255,0.95); backdrop-filter: saturate(180%) blur(12px); -webkit-backdrop-filter: saturate(180%) blur(12px); border-top: 1px solid var(--line); box-shadow: 0 -8px 24px -14px rgba(40,71,61,0.3); padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.75rem; }
+        .ms-dot { width: 0.85rem; height: 0.85rem; border-radius: 50%; background: #cdd6cf; flex: 0 0 auto; }
+        .ms-dot.red { background: var(--stop); } .ms-dot.yellow { background: var(--gold); } .ms-dot.green { background: var(--mid-green); }
+        .ms-dot.on { animation: bulbPulse 2.6s ease-in-out infinite; }
+        .ms-text { flex: 1 1 auto; min-width: 0; font-size: 0.86rem; font-weight: 600; color: var(--ink); line-height: 1.15; }
+        .ms-text small { display: block; font-weight: 400; color: var(--ink-soft); font-size: 0.72rem; }
+        .ms-btn { flex: 0 0 auto; background: var(--mid-green); color: #fff; border: none; border-radius: 2rem; padding: 0.42rem 1rem; font-size: 0.8rem; font-weight: 600; }
+
+        hr { border-color: var(--line); opacity: 1; }
+        .sidebar-sticky { position: sticky; top: 6.5rem; }
+        .fade-in { animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { *, .app-fade, .bulb.on, .ms-dot.on { animation: none !important; transition: none !important; } }
+      `}</style>
+
+      <div className="app-fade">
+        {/* En-tête fixe avec suivi d'étape */}
+        <div className="topbar">
+          <div className="gold-rule"></div>
+          <div className="container">
+            <div className="topbar-inner">
+              <div className="brand-wrap">
+                <p className="brand-title">Partager une ressource éducative libre</p>
+              </div>
+              <nav className="step-track d-none d-lg-flex" aria-label="Progression">
+                <span className={`schip ${legalClear ? 'done' : 'active'}`}>
+                  <span className="dot">{legalClear ? <i className="bi bi-check2"></i> : '1'}</span>Pertinence
+                </span>
+                <span className="schip-line"></span>
+                <span className={`schip ${showLicense ? 'done' : (legalClear ? 'active' : '')}`}>
+                  <span className="dot">{showLicense ? <i className="bi bi-check2"></i> : '2'}</span>Licence
+                </span>
+              </nav>
+              <div className="reset-wrap">
+                <button className="btn-ghost" onClick={resetAll}>
+                  <i className="bi bi-arrow-counterclockwise me-1"></i>Réinitialiser
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="container">
+          <section className="hero">
+            <p className="hero-kicker">Aide à la décision | Ressource éducative libre (REL)</p>
+            <h2 className="hero-title">Décider du partage,<br className="d-none d-md-block" /> puis choisir la <span className="it">bonne licence</span>.</h2>
+            <p className="hero-sub">Un parcours en deux étapes. Évaluez d'abord la pertinence et les enjeux légaux de votre partage, puis laissez-vous guider vers la licence Creative Commons adéquate.</p>
+          </section>
+
+          {/* --- ÉTAPE 1 : en-tête pleine largeur --- */}
+          <div className="step-head">
+            <span className="step-num">1</span>
+            <h2>Est-ce pertinent de partager cette ressource ?</h2>
+          </div>
+          <p className="hero-sub mb-4" style={{ fontSize: '0.97rem' }}>
+            Partager, c'est faire vivre une ressource au-delà de soi. Ces repères vous aident à le faire avec assurance.
+          </p>
+          <div className="callout">
+            <i className="bi bi-info-circle fs-6"></i>
+            <span><b>Une aide, pas un test.</b> Aucun partage n'est parfait et il n'est pas nécessaire de tout cocher. En cas de doute, la direction vous accompagne.</span>
+          </div>
+
+          <div className="row g-5 pb-5">
+            {/* COLONNE GAUCHE */}
+            <div className="col-lg-8">
+
+              {/* --- ÉTAPE 1 : questions --- */}
+              <div className="mb-5">
+
+                {/* Aspects légaux */}
+                <div className="panel">
+                  <h3 className="panel-title">Aspects légaux obligatoires</h3>
+                  <p className="panel-cap">Un seul « non » ou « à valider » suffit à suspendre le partage. À régler en priorité.</p>
+                  <div className="legal-meter">
+                    <div className="lm-track">
+                      <div className={`lm-fill ${legalConcern ? 'concern' : ''}`} style={{ width: `${(legalOui / LEGAL_ITEMS.length) * 100}%` }}></div>
+                    </div>
+                    <span className={`lm-caption ${legalClear ? 'ok' : ''}`}>
+                      {legalConcern ? 'Un point bloque le partage' : `${legalOui} / ${LEGAL_ITEMS.length} prêts`}
+                    </span>
+                  </div>
+                  {LEGAL_ITEMS.map(item => (
+                    <div key={item.id} className="mb-4">
+                      <div className="fw-semibold mb-1" style={{ color: 'var(--deep-green)' }}>{item.label}</div>
+                      <div className="text-muted small mb-3">{item.desc}</div>
+                      <div className="segmented" role="radiogroup" aria-label={item.label}>
+                        <input type="radio" id={`yes-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'oui'} onChange={() => setLegalItem(item.id, 'oui')} />
+                        <label className="opt-oui" htmlFor={`yes-${item.id}`}>Oui</label>
+                        <input type="radio" id={`verif-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'verifier'} onChange={() => setLegalItem(item.id, 'verifier')} />
+                        <label className="opt-verif" htmlFor={`verif-${item.id}`}>À valider</label>
+                        <input type="radio" id={`no-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'non'} onChange={() => setLegalItem(item.id, 'non')} />
+                        <label className="opt-non" htmlFor={`no-${item.id}`}>Non</label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Autres thèmes */}
+                {['potentiel', 'qualite', 'rayon'].map(key => {
+                  const t = THEMES[key];
+                  return (
+                    <div key={key} className="panel">
+                      <h3 className="panel-title">{t.title}</h3>
+                      {t.desc && <p className="panel-cap">{t.desc}</p>}
+                      {t.items.map(item => {
+                        const isChecked = !!checks[item.id];
+                        return (
+                          <div
+                            key={item.id}
+                            className={`check-item ${isChecked ? 'checked' : ''}`}
+                            role="checkbox" aria-checked={isChecked} tabIndex={0}
+                            onClick={(e) => { if (e.target.closest('a')) return; toggleCheck(item.id); }}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item.id); } }}
+                          >
+                            <span className="cbox" aria-hidden="true"></span>
+                            <span className="check-label w-100">{item.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* --- ÉTAPE 2 --- */}
+              <div ref={part2Ref} className="mb-5" style={{ opacity: legalClear ? 1 : 0.5, pointerEvents: legalClear ? 'auto' : 'none', transition: 'opacity 0.4s ease' }}>
+                <div className="step-head">
+                  <span className="step-num s2">2</span>
+                  <h2>Quelle licence Creative Commons choisir ?</h2>
+                </div>
+
+                {!legalClear && (
+                  <div className="lock-banner" style={{ pointerEvents: 'auto' }}>
+                    <i className="bi bi-lock me-2"></i>Réglez d'abord les <strong>quatre aspects légaux</strong> (tout « Oui ») pour accéder au choix de licence.
+                  </div>
+                )}
+
+                <p className="hero-sub mb-4" style={{ fontSize: '0.97rem' }}>
+                  Une fois la décision de partager prise, quatre questions vous orientent vers la bonne licence.
+                </p>
+
+                <div className="callout amber">
+                  <i className="bi bi-lightbulb fs-6"></i>
+                  <span>L'attribution (BY) est toujours requise : la décision porte sur les conditions à ajouter par-dessus. Pour une REL, deux options conviennent presque toujours : <b>CC&nbsp;BY</b> (le défaut du SSF) ou <b>CC&nbsp;BY-SA</b>. Les conditions NC et ND sont des exceptions à justifier.</span>
+                </div>
+
+                {/* Q1 */}
+                <div className="panel">
+                  <h4 className="panel-title mb-4">1. Détenez-vous les droits sur l'ensemble de cette ressource ?</h4>
+                  <div className="row g-3 radio-box">
+                    <div className="col-sm-6">
+                      <input type="radio" id="r-oui" name="rights" checked={ans.rights === 'oui'} onChange={() => handleAns('rights', 'oui')} />
+                      <label htmlFor="r-oui">Oui, œuvre 100 % originale</label>
+                    </div>
+                    <div className="col-sm-6">
+                      <input type="radio" id="r-tiers" name="rights" checked={ans.rights === 'tiers'} onChange={() => handleAns('rights', 'tiers')} />
+                      <label htmlFor="r-tiers">Non, intègre des contenus tiers<span className="d-block small text-muted mt-1 fw-normal">Ex : images, textes empruntés</span></label>
+                    </div>
+                  </div>
+                </div>
+                {ans.rights === 'tiers' && (
+                  <div className="reflect gate fade-in"><b>À régler d'abord. </b>Vous ne pouvez licencier que les parties dont vous détenez les droits. Vérifiez que chaque contenu tiers est compatible avec la licence visée (CC BY), ou retirez-le.</div>
+                )}
+
+                {/* Q2 */}
+                {ans.rights && (
+                  <div className="panel fade-in">
+                    <h4 className="panel-title mb-4">2. Acceptez-vous que l'on modifie ou adapte votre ressource ?</h4>
+                    <div className="row g-3 radio-box">
+                      <div className="col-sm-6">
+                        <input type="radio" id="a-oui" name="adapt" checked={ans.adapt === 'oui'} onChange={() => handleAns('adapt', 'oui')} />
+                        <label htmlFor="a-oui">Oui (recommandé)</label>
+                      </div>
+                      <div className="col-sm-6">
+                        <input type="radio" id="a-non" name="adapt" checked={ans.adapt === 'non'} onChange={() => handleAns('adapt', 'non')} />
+                        <label htmlFor="a-non">Non (condition ND)</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {ans.adapt === 'non' && (
+                  <div className="reflect warn fade-in"><b>ND : à reconsidérer. </b>Interdire les modifications empêche de traduire, mettre à jour ou réutiliser un extrait, ce qui retire à la ressource sa valeur de REL. La crainte d'être mal cité·e est déjà couverte : l'attribution reste obligatoire et la licence est irrévocable.</div>
+                )}
+
+                {/* Q3 */}
+                {ans.adapt === 'oui' && (
+                  <div className="panel fade-in">
+                    <h4 className="panel-title mb-4">3. Imposer la même licence aux versions dérivées ?</h4>
+                    <div className="row g-3 radio-box">
+                      <div className="col-sm-6">
+                        <input type="radio" id="s-non" name="sa" checked={ans.sa === 'non'} onChange={() => handleAns('sa', 'non')} />
+                        <label htmlFor="s-non">Sans préférence</label>
+                      </div>
+                      <div className="col-sm-6">
+                        <input type="radio" id="s-oui" name="sa" checked={ans.sa === 'oui'} onChange={() => handleAns('sa', 'oui')} />
+                        <label htmlFor="s-oui">Oui, obliger l'ouverture (SA)</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Q4 */}
+                {(ans.adapt === 'non' || (ans.adapt === 'oui' && ans.sa !== null)) && (
+                  <div className="panel fade-in">
+                    <h4 className="panel-title mb-4">4. Interdire spécifiquement l'usage commercial ?</h4>
+                    <div className="row g-3 radio-box">
+                      <div className="col-sm-6">
+                        <input type="radio" id="n-non" name="nc" checked={ans.nc === 'non'} onChange={() => handleAns('nc', 'non')} />
+                        <label htmlFor="n-non">Non, usage libre</label>
+                      </div>
+                      <div className="col-sm-6">
+                        <input type="radio" id="n-oui" name="nc" checked={ans.nc === 'oui'} onChange={() => handleAns('nc', 'oui')} />
+                        <label htmlFor="n-oui">Oui, interdire l'usage (NC)</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {ans.nc === 'oui' && (
+                  <div className="reflect warn fade-in"><b>NC : attention. </b>« Non commercial » est une notion floue qui bloque des usages pédagogiques légitimes et rend la ressource incompatible avec la plupart des contenus en CC BY / BY-SA. À réserver aux cas où un revenu réel est en jeu.</div>
+                )}
+              </div>
+            </div>
+
+            {/* COLONNE DROITE */}
+            <div className="col-lg-4">
+              <div className="sidebar-sticky" ref={sideRef}>
+
+                {!showLicense ? (
+                  <div className="verdict-panel">
+                    <div className="verdict-cap">Statut en direct</div>
+                    <div className="p-4 d-flex gap-4 align-items-center">
+                      <div className="traffic" role="img" aria-label={`Feu ${verdictStatus}`}>
+                        <div className={`bulb red ${verdictStatus === 'red' ? 'on' : ''}`}></div>
+                        <div className={`bulb yellow ${verdictStatus === 'yellow' ? 'on' : ''}`}></div>
+                        <div className={`bulb green ${verdictStatus === 'green' ? 'on' : ''}`}></div>
+                      </div>
+                      <div aria-live="polite">
+                        <div className="verdict-title" style={{ color: verdictData.color }}>
+                          <i className={`bi ${verdictData.icon} me-2`}></i>{verdictData.title}
+                        </div>
+                        <p className="text-muted small mb-0 lh-sm">{verdictData.msg}</p>
+                      </div>
+                    </div>
+                    {legalClear && (
+                      <div className="p-3 text-center border-top">
+                        <button onClick={() => part2Ref.current?.scrollIntoView({ behavior: 'smooth' })} className="btn btn-primary-custom btn-pill fw-bold px-4 py-2">
+                          Choisir la licence <i className="bi bi-arrow-down ms-1"></i>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="licence-card fade-in" style={{ borderTop: `4px solid ${licInfo.reco ? 'var(--mid-green)' : 'var(--gold)'}` }}>
+                    <div className="p-4">
+                      <span className={`pill ${licInfo.reco ? 'pill-reco' : 'pill-exc'}`}>
+                        {licInfo.reco ? 'Recommandé pour les REL' : 'Exception à valider'}
+                      </span>
+                      <h2 className="lic-code">CC {licenseCode}</h2>
+                      <p className="lic-full mb-3">{licInfo.full}</p>
+
+                      <div className="allows-box mb-3">{licInfo.allows}</div>
+
+                      {!licInfo.reco && (
+                        <div className="reflect warn" style={{ margin: '0 0 0.75rem' }}>Cette condition (NC et/ou ND) limite la réutilisation et peut nuire à la circulation. Assurez-vous qu'elle répond à un besoin réel et validez-la avec la direction.</div>
+                      )}
+                      {ans.rights === 'tiers' && (
+                        <div className="reflect gate" style={{ margin: '0 0 0.75rem' }}><b>Avant de diffuser : </b>confirmez que les contenus tiers sont compatibles avec cette licence.</div>
+                      )}
+
+                      <hr className="my-4" />
+
+                      <h5 className="panel-title mb-4" style={{ fontSize: '1rem' }}>Générer votre mention</h5>
+
+                      <div className="form-floating mb-3">
+                        <input type="text" className="form-control" id="floatingTitle" value={meta.title} onChange={e => setMeta({ ...meta, title: e.target.value })} placeholder="Titre" />
+                        <label htmlFor="floatingTitle">Titre du document</label>
+                      </div>
+                      <div className="form-floating mb-3">
+                        <input type="text" className="form-control" id="floatingAuthor" value={meta.author} onChange={e => setMeta({ ...meta, author: e.target.value })} placeholder="Auteur" />
+                        <label htmlFor="floatingAuthor">Auteur(e) ou Service</label>
+                      </div>
+                      <div className="form-floating mb-4">
+                        <input type="text" className="form-control" id="floatingYear" value={meta.year} onChange={e => setMeta({ ...meta, year: e.target.value })} placeholder="Année" />
+                        <label htmlFor="floatingYear">Année de publication</label>
+                      </div>
+
+                      <div className="seg-tabs mb-3">
+                        <button className={citationFormat === 'standard' ? 'active' : ''} onClick={() => setCitationFormat('standard')} type="button">Standard</button>
+                        <button className={citationFormat === 'apa' ? 'active' : ''} onClick={() => setCitationFormat('apa')} type="button">Norme APA</button>
+                      </div>
+
+                      <div className="mention-box p-4 mb-3">
+                        <div ref={copyAreaRef} style={{ fontFamily: 'Georgia, serif', fontSize: '13.5px', color: '#333', lineHeight: '1.55' }}>
+                          {citationFormat === 'standard' ? (
+                            <p style={{ margin: '0 0 10px 0' }}>
+                              « <strong>{meta.title.trim() || '[Titre]'}</strong> » © {meta.year.trim() || '[Année]'} par {meta.author.trim() || '[Auteur]'} est mis à disposition selon les termes de la licence <a href={deedUrl(licInfo.code)} target="_blank" rel="noopener noreferrer">Creative Commons {licInfo.full} (CC {licenseCode})</a>.
+                            </p>
+                          ) : (
+                            <p style={{ margin: '0 0 10px 0' }}>
+                              {meta.author.trim() || '[Auteur(s)]'}. ({meta.year.trim() || '[Année]'}). <em>{meta.title.trim() || '[Titre du document]'}</em>. Licence Creative Commons {licInfo.full} (CC {licenseCode}). <a href={deedUrl(licInfo.code)} target="_blank" rel="noopener noreferrer">{deedUrl(licInfo.code)}</a>
+                            </p>
+                          )}
+                          {logoOk && (
+                            <img src={badgeUrl(licInfo.code)} alt={`Licence CC ${licenseCode}`} style={{ height: '31px', display: 'block' }} onError={() => setLogoOk(false)} />
+                          )}
+                        </div>
+                      </div>
+
+                      <button onClick={copyToClipboard} className={`btn w-100 fw-bold py-2 ${copied ? 'btn-success' : 'btn-primary-custom'}`}>
+                        {copied ? <><i className="bi bi-check2-all me-2"></i>Copié avec succès</> : <><i className="bi bi-clipboard me-2"></i>Copier la mention{logoOk ? ' avec logo' : ''}</>}
+                      </button>
+                      <p className="text-muted small text-center mt-3 mb-0">
+                        Licence <strong>irrévocable</strong>. Outil officiel : <a href="https://creativecommons.org/chooser/" target="_blank" rel="noopener noreferrer">creativecommons.org/chooser</a>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Barre de statut mobile (sticky) */}
+        <div className="mobile-status d-lg-none">
+          <span className={`ms-dot ${verdictStatus} ${verdictStatus !== 'neutral' ? 'on' : ''}`}></span>
+          <div className="ms-text">
+            {showLicense ? `Licence : CC ${licenseCode}` : verdictData.title}
+            <small>{showLicense ? 'Mention prête à copier' : (legalClear ? 'Aspects légaux réglés' : `${legalOui} / ${LEGAL_ITEMS.length} aspects légaux`)}</small>
+          </div>
+          {showLicense ? (
+            <button className="ms-btn" onClick={() => sideRef.current?.scrollIntoView({ behavior: 'smooth' })}>Voir</button>
+          ) : legalClear ? (
+            <button className="ms-btn" onClick={() => part2Ref.current?.scrollIntoView({ behavior: 'smooth' })}>Étape 2</button>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+  </script>
+</body>
+</html>
