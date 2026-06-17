@@ -49,7 +49,7 @@ L'outil fonctionne entièrement côté navigateur. Aucune réponse, aucune saisi
 - Assistant officiel Creative Commons : <https://creativecommons.org/chooser/>
 
 ## Crédits et licence
-Réalisé par Alexandra Lez.
+Réalisé par Alexandra Lez, alexandra.lez@usherbrooke.ca
 
 Cet outil est lui-même une ressource éducative libre, diffusée sous licence **Creative Commons Attribution 4.0 International (CC BY 4.0)**. Vous êtes libre de le réutiliser et de l'adapter, à condition d'en créditer la source.
 
