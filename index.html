@@ -17,7 +17,7 @@
   </script>
 </head>
 <body>
-  <!-- A. Lez, juin 2026 - Version 2 -->
+  <!-- A. Lez, juin 2026 - Version 1 -->
   <div id="root"></div>
   <script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useRef } = React;
@@ -48,16 +48,6 @@ const LEGAL_ITEMS = [
   { id: 'consent', label: "Consentements", desc: "Obtenus pour les collaborations ou captations." }
 ];
 
-// Ordre global des items de la première section, pour l'affichage progressif
-// (aspects légaux, puis Potentiel, Qualité et Rayonnement). Chaque item ne
-// s'affiche qu'une fois le précédent traité.
-const SECTION1_SEQ = [
-  ...LEGAL_ITEMS.map(i => 'legal:' + i.id),
-  ...THEMES.potentiel.items.map(i => 'check:' + i.id),
-  ...THEMES.qualite.items.map(i => 'check:' + i.id),
-  ...THEMES.rayon.items.map(i => 'check:' + i.id)
-];
-
 const LICENSES = {
   'BY': { full: 'Attribution 4.0 International', code: 'by', reco: true, allows: "Réutilisation totale, y compris commerciale, si l'auteur est crédité." },
   'BY-SA': { full: 'Attribution – Partage dans les mêmes conditions 4.0', code: 'by-sa', reco: true, allows: "Les œuvres dérivées doivent obligatoirement porter cette même licence." },
@@ -73,6 +63,9 @@ const deedUrl = (code) => `https://creativecommons.org/licenses/${code}/4.0/deed
 // (ex. `/badges/${code}.png`) : même origine = intégration garantie à la copie.
 const badgeUrl = (code) => `https://licensebuttons.net/l/${code}/4.0/88x31.png`;
 const escHtml = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// Séparateur après un segment de citation : un point + espace, sauf si le segment
+// se termine déjà par un point (évite « M.. » -> « M. »).
+const endDot = (s) => (String(s).trim().endsWith('.') ? ' ' : '. ');
 
 function App() {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -85,11 +78,7 @@ function App() {
   const [ans, setAns] = useState({ rights: null, adapt: 'oui', sa: null, nc: null });
   const [meta, setMeta] = useState({ title: '', author: '', faculte: '', etablissement: '', year: new Date().getFullYear().toString() });
   const [copied, setCopied] = useState(false);
-  const [citationFormat, setCitationFormat] = useState('standard');
   const [logoOk, setLogoOk] = useState(true);
-  // Nombre d'items révélés dans la première section (affichage progressif).
-  const [revealCount, setRevealCount] = useState(1);
-  const advanceFrom = (idx) => setRevealCount(c => Math.max(c, idx + 2));
 
   const part2Ref = useRef(null);
   const sideRef = useRef(null);
@@ -130,6 +119,10 @@ function App() {
   const legalOui = LEGAL_ITEMS.filter(i => legal[i.id] === 'oui').length;
   const legalConcern = LEGAL_ITEMS.some(i => legal[i.id] === 'non' || legal[i.id] === 'verifier');
   const legalClear = legalOui === LEGAL_ITEMS.length;
+  // L'étape 2 (choix de licence) se déverrouille une fois les aspects légaux réglés
+  // ET la dernière option de Rayonnement cochée (fin de l'évaluation).
+  const rayonLastId = THEMES.rayon.items[THEMES.rayon.items.length - 1].id;
+  const step2Ready = legalClear && !!checks[rayonLastId];
 
   const verdictData = {
     neutral: { icon: 'bi-compass', title: 'Aide à la décision', msg: 'Renseignez le formulaire pour évaluer votre ressource.', color: 'var(--ink-soft)' },
@@ -158,7 +151,7 @@ function App() {
   const isPart2Ready = () => ans.rights && ans.adapt && ans.nc !== null && (ans.adapt === 'non' || ans.sa !== null);
   const licenseCode = computeLicense();
   const licInfo = licenseCode ? LICENSES[licenseCode] : null;
-  const showLicense = legalClear && isPart2Ready() && licInfo;
+  const showLicense = step2Ready && isPart2Ready() && licInfo;
 
   const resetAll = () => {
     setChecks({});
@@ -166,34 +159,39 @@ function App() {
     setAns({ rights: null, adapt: 'oui', sa: null, nc: null });
     setMeta(m => ({ ...m, title: '', author: '', faculte: '', etablissement: '' }));
     setCopied(false);
-    setRevealCount(1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Compose le segment auteur + rattachement (Centre/Faculté, Établissement).
-  // Les deux rattachements sont facultatifs : ils ne sont ajoutés que s'ils sont remplis.
-  const composeActor = () => {
-    const parts = [meta.author.trim() || '[Auteur]'];
-    if (meta.faculte.trim()) parts.push(meta.faculte.trim());
+  // Rattachement institutionnel (Établissement, puis Centre/Faculté), tous deux
+  // facultatifs : seuls les champs remplis apparaissent.
+  const affiliation = () => {
+    const parts = [];
     if (meta.etablissement.trim()) parts.push(meta.etablissement.trim());
+    if (meta.faculte.trim()) parts.push(meta.faculte.trim());
     return parts.join(', ');
   };
 
   // Construit la mention (HTML + texte) à partir de l'état courant.
   const buildMention = (logoHtml) => {
     const t = meta.title.trim() || '[Titre]';
-    const a = composeActor();
+    const a = meta.author.trim() || '[Auteur]';
     const y = meta.year.trim() || '[Année]';
+    const affil = affiliation();
     const url = deedUrl(licInfo.code);
-    let html, text;
-    if (citationFormat === 'standard') {
-      html = `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55;margin:0 0 8px">« <strong>${escHtml(t)}</strong> » © ${escHtml(y)} par ${escHtml(a)} est mis à disposition selon les termes de la licence <a href="${url}">Creative Commons ${licInfo.full} (CC ${licenseCode})</a>.</p>`;
-      text = `« ${t} » © ${y} par ${a} est mis à disposition selon les termes de la licence Creative Commons ${licInfo.full} (CC ${licenseCode}). ${url}`;
+    const ccLabel = `CC ${licenseCode} 4.0`;
+
+    const citationText = `${a}${endDot(a)}(${y}). ${t}${endDot(t)}${affil ? affil + endDot(affil) : ''}Sous licence ${ccLabel}.`;
+    const text = `Pour citer cette ressource :\n${citationText} ${url}`;
+
+    const citationHtml = `${escHtml(a)}${endDot(a)}(${escHtml(y)}). <em>${escHtml(t)}</em>${endDot(t)}${affil ? escHtml(affil) + endDot(affil) : ''}Sous licence <a href="${url}">${ccLabel}</a>.`;
+    let html = `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;margin:0 0 6px">Pour citer cette ressource :</p>`;
+    if (logoHtml) {
+      // Tableau : badge à gauche, citation à droite (colle proprement dans Word/courriel).
+      html += `<table style="border-collapse:collapse;margin:0"><tr><td style="vertical-align:top;padding:2px 10px 0 0">${logoHtml}</td><td style="vertical-align:top;font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55">${citationHtml}</td></tr></table>`;
     } else {
-      html = `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55;margin:0 0 8px">${escHtml(a)}. (${escHtml(y)}). <em>${escHtml(t)}</em>. Licence Creative Commons ${licInfo.full} (CC ${licenseCode}). <a href="${url}">${url}</a></p>`;
-      text = `${a}. (${y}). ${t}. Licence Creative Commons ${licInfo.full} (CC ${licenseCode}). ${url}`;
+      html += `<p style="font-family:Georgia,serif;font-size:13.5px;color:#333;line-height:1.55;margin:0">${citationHtml}</p>`;
     }
-    return { html: html + (logoHtml || ''), text };
+    return { html, text };
   };
 
   const blobToDataURL = (blob) => new Promise((resolve, reject) => {
@@ -446,11 +444,11 @@ function App() {
                 <p className="brand-title">Partager une ressource éducative libre</p>
               </div>
               <nav className="step-track d-none d-lg-flex" aria-label="Progression">
-                <span className={`schip ${legalClear ? 'done' : 'active'}`}>
-                  <span className="dot">{legalClear ? <i className="bi bi-check2"></i> : '1'}</span>Pertinence
+                <span className={`schip ${step2Ready ? 'done' : 'active'}`}>
+                  <span className="dot">{step2Ready ? <i className="bi bi-check2"></i> : '1'}</span>Pertinence
                 </span>
                 <span className="schip-line"></span>
-                <span className={`schip ${showLicense ? 'done' : (legalClear ? 'active' : '')}`}>
+                <span className={`schip ${showLicense ? 'done' : (step2Ready ? 'active' : '')}`}>
                   <span className="dot">{showLicense ? <i className="bi bi-check2"></i> : '2'}</span>Licence
                 </span>
               </nav>
@@ -502,21 +500,21 @@ function App() {
                       {legalConcern ? 'Un point bloque le partage' : `${legalOui} / ${LEGAL_ITEMS.length} prêts`}
                     </span>
                   </div>
-                  {LEGAL_ITEMS.map((item) => {
-                    // Affichage progressif : l'item ne s'affiche qu'une fois
-                    // les précédents traités (selon la séquence globale).
-                    const gi = SECTION1_SEQ.indexOf('legal:' + item.id);
-                    if (gi >= revealCount) return null;
+                  {LEGAL_ITEMS.map((item, idx) => {
+                    // Affichage progressif : une question n'apparaît qu'une fois
+                    // la précédente répondue (peu importe la réponse choisie).
+                    const prevAnswered = idx === 0 || legal[LEGAL_ITEMS[idx - 1].id] !== null;
+                    if (!prevAnswered) return null;
                     return (
-                    <div key={item.id} className={`mb-4 ${gi > 0 ? 'fade-in' : ''}`}>
+                    <div key={item.id} className={`mb-4 ${idx > 0 ? 'fade-in' : ''}`}>
                       <div className="fw-semibold mb-1" style={{ color: 'var(--deep-green)' }}>{item.label}</div>
                       <div className="text-muted small mb-3">{item.desc}</div>
                       <div className="segmented" role="radiogroup" aria-label={item.label}>
-                        <input type="radio" id={`yes-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'oui'} onChange={() => { setLegalItem(item.id, 'oui'); advanceFrom(gi); }} />
+                        <input type="radio" id={`yes-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'oui'} onChange={() => setLegalItem(item.id, 'oui')} />
                         <label className="opt-oui" htmlFor={`yes-${item.id}`}>Oui</label>
-                        <input type="radio" id={`verif-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'verifier'} onChange={() => { setLegalItem(item.id, 'verifier'); advanceFrom(gi); }} />
+                        <input type="radio" id={`verif-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'verifier'} onChange={() => setLegalItem(item.id, 'verifier')} />
                         <label className="opt-verif" htmlFor={`verif-${item.id}`}>À valider</label>
-                        <input type="radio" id={`no-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'non'} onChange={() => { setLegalItem(item.id, 'non'); advanceFrom(gi); }} />
+                        <input type="radio" id={`no-${item.id}`} name={`legal-${item.id}`} checked={legal[item.id] === 'non'} onChange={() => setLegalItem(item.id, 'non')} />
                         <label className="opt-non" htmlFor={`no-${item.id}`}>Non</label>
                       </div>
                     </div>
@@ -524,58 +522,53 @@ function App() {
                   })}
                 </div>
 
-                {/* Autres thèmes */}
-                {['potentiel', 'qualite', 'rayon'].map(key => {
+                {/* Autres thèmes — chaque boîte apparaît une fois le DERNIER item
+                    de la boîte précédente coché (Potentiel -> Qualité -> Rayonnement). */}
+                {LEGAL_ITEMS.every(i => legal[i.id] !== null) && ['potentiel', 'qualite', 'rayon'].map((key, ki) => {
+                  const order = ['potentiel', 'qualite', 'rayon'];
+                  if (ki > 0) {
+                    const prevItems = THEMES[order[ki - 1]].items;
+                    const prevLastId = prevItems[prevItems.length - 1].id;
+                    if (!checks[prevLastId]) return null;
+                  }
                   const t = THEMES[key];
-                  const idxs = t.items.map(i => SECTION1_SEQ.indexOf('check:' + i.id));
-                  // Le panneau n'apparaît qu'une fois son premier item révélé.
-                  if (idxs[0] >= revealCount) return null;
-                  const frontier = revealCount - 1;
-                  const frontierInPanel = idxs.includes(frontier);
-                  const moreToReveal = revealCount < SECTION1_SEQ.length;
                   return (
                     <div key={key} className="panel fade-in">
                       <h3 className="panel-title">{t.title}</h3>
                       {t.desc && <p className="panel-cap">{t.desc}</p>}
                       {t.items.map(item => {
-                        const gi = SECTION1_SEQ.indexOf('check:' + item.id);
-                        if (gi >= revealCount) return null;
                         const isChecked = !!checks[item.id];
                         return (
                           <div
                             key={item.id}
-                            className={`check-item ${isChecked ? 'checked' : ''} ${gi === frontier && gi > 0 ? 'fade-in' : ''}`}
+                            className={`check-item ${isChecked ? 'checked' : ''}`}
                             role="checkbox" aria-checked={isChecked} tabIndex={0}
-                            onClick={(e) => { if (e.target.closest('a')) return; toggleCheck(item.id); advanceFrom(gi); }}
-                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item.id); advanceFrom(gi); } }}
+                            onClick={(e) => { if (e.target.closest('a')) return; toggleCheck(item.id); }}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item.id); } }}
                           >
                             <span className="cbox" aria-hidden="true"></span>
                             <span className="check-label w-100">{item.label}</span>
                           </div>
                         );
                       })}
-                      {frontierInPanel && moreToReveal && (
-                        <div className="mt-3">
-                          <button type="button" className="btn btn-primary-custom btn-pill px-4 py-2" onClick={() => advanceFrom(frontier)}>
-                            Suivant <i className="bi bi-arrow-down ms-1"></i>
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
               </div>
 
               {/* --- ÉTAPE 2 --- */}
-              <div ref={part2Ref} className="mb-5" style={{ opacity: legalClear ? 1 : 0.5, pointerEvents: legalClear ? 'auto' : 'none', transition: 'opacity 0.4s ease' }}>
+              <div ref={part2Ref} className="mb-5" style={{ opacity: step2Ready ? 1 : 0.5, pointerEvents: step2Ready ? 'auto' : 'none', transition: 'opacity 0.4s ease' }}>
                 <div className="step-head">
                   <span className="step-num s2">2</span>
                   <h2>Quelle licence Creative Commons choisir ?</h2>
                 </div>
 
-                {!legalClear && (
+                {!step2Ready && (
                   <div className="lock-banner" style={{ pointerEvents: 'auto' }}>
-                    <i className="bi bi-lock me-2"></i>Réglez d'abord les <strong>quatre aspects légaux</strong> (tout « Oui ») pour accéder au choix de licence.
+                    <i className="bi bi-lock me-2"></i>
+                    {!legalClear
+                      ? <>Réglez d'abord les <strong>quatre aspects légaux</strong> (tout « Oui »), puis complétez l'évaluation pour accéder au choix de licence.</>
+                      : <>Complétez l'évaluation jusqu'à la <strong>dernière option de Rayonnement</strong> pour accéder au choix de licence.</>}
                   </div>
                 )}
 
@@ -665,10 +658,10 @@ function App() {
                         <p className="text-muted small mb-0 lh-sm">{verdictData.msg}</p>
                       </div>
                     </div>
-                    {legalClear && (
+                    {step2Ready && (
                       <div className="p-3 text-center border-top">
                         <button onClick={() => part2Ref.current?.scrollIntoView({ behavior: 'smooth' })} className="btn btn-primary-custom btn-pill fw-bold px-4 py-2">
-                          Choisir la licence <i className="bi bi-arrow-down ms-1"></i>
+                          Choisir la licence
                         </button>
                       </div>
                     )}
@@ -716,25 +709,17 @@ function App() {
                         <label htmlFor="floatingEtab">Établissement <span className="text-muted">(facultatif)</span></label>
                       </div>
 
-                      <div className="seg-tabs mb-3">
-                        <button className={citationFormat === 'standard' ? 'active' : ''} onClick={() => setCitationFormat('standard')} type="button">Standard</button>
-                        <button className={citationFormat === 'apa' ? 'active' : ''} onClick={() => setCitationFormat('apa')} type="button">Norme APA</button>
-                      </div>
-
                       <div className="mention-box p-4 mb-3">
                         <div ref={copyAreaRef} style={{ fontFamily: 'Georgia, serif', fontSize: '13.5px', color: '#333', lineHeight: '1.55' }}>
-                          {citationFormat === 'standard' ? (
-                            <p style={{ margin: '0 0 10px 0' }}>
-                              « <strong>{meta.title.trim() || '[Titre]'}</strong> » © {meta.year.trim() || '[Année]'} par {composeActor()} est mis à disposition selon les termes de la licence <a href={deedUrl(licInfo.code)} target="_blank" rel="noopener noreferrer">Creative Commons {licInfo.full} (CC {licenseCode})</a>.
+                          <p style={{ margin: '0 0 8px 0' }}>Pour citer cette ressource :</p>
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                            {logoOk && (
+                              <img src={badgeUrl(licInfo.code)} alt={`Licence CC ${licenseCode}`} style={{ height: '31px', flex: '0 0 auto', marginTop: '2px' }} onError={() => setLogoOk(false)} />
+                            )}
+                            <p style={{ margin: 0 }}>
+                              {(meta.author.trim() || '[Auteur]')}{endDot(meta.author.trim() || '[Auteur]')}({meta.year.trim() || '[Année]'}). <em>{meta.title.trim() || '[Titre]'}</em>{endDot(meta.title.trim() || '[Titre]')}{affiliation() ? affiliation() + endDot(affiliation()) : ''}Sous licence <a href={deedUrl(licInfo.code)} target="_blank" rel="noopener noreferrer">CC {licenseCode} 4.0</a>.
                             </p>
-                          ) : (
-                            <p style={{ margin: '0 0 10px 0' }}>
-                              {composeActor()}. ({meta.year.trim() || '[Année]'}). <em>{meta.title.trim() || '[Titre du document]'}</em>. Licence Creative Commons {licInfo.full} (CC {licenseCode}). <a href={deedUrl(licInfo.code)} target="_blank" rel="noopener noreferrer">{deedUrl(licInfo.code)}</a>
-                            </p>
-                          )}
-                          {logoOk && (
-                            <img src={badgeUrl(licInfo.code)} alt={`Licence CC ${licenseCode}`} style={{ height: '31px', display: 'block' }} onError={() => setLogoOk(false)} />
-                          )}
+                          </div>
                         </div>
                       </div>
 
@@ -769,7 +754,7 @@ function App() {
           </div>
           {showLicense ? (
             <button className="ms-btn" onClick={() => sideRef.current?.scrollIntoView({ behavior: 'smooth' })}>Voir</button>
-          ) : legalClear ? (
+          ) : step2Ready ? (
             <button className="ms-btn" onClick={() => part2Ref.current?.scrollIntoView({ behavior: 'smooth' })}>Étape 2</button>
           ) : null}
         </div>
