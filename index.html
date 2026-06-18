@@ -445,11 +445,11 @@ function App() {
               </div>
               <nav className="step-track d-none d-lg-flex" aria-label="Progression">
                 <span className={`schip ${step2Ready ? 'done' : 'active'}`}>
-                  <span className="dot">{step2Ready ? <i className="bi bi-check2"></i> : '1'}</span>Pertinence
+                  <span className="dot">{step2Ready ? <i className="bi bi-check2"></i> : 'A'}</span>Pertinence
                 </span>
                 <span className="schip-line"></span>
                 <span className={`schip ${showLicense ? 'done' : (step2Ready ? 'active' : '')}`}>
-                  <span className="dot">{showLicense ? <i className="bi bi-check2"></i> : '2'}</span>Licence
+                  <span className="dot">{showLicense ? <i className="bi bi-check2"></i> : 'B'}</span>Licence
                 </span>
               </nav>
               <div className="reset-wrap">
@@ -472,7 +472,7 @@ function App() {
 
           {/* --- ÉTAPE 1 : en-tête pleine largeur --- */}
           <div className="step-head">
-            <span className="step-num">1</span>
+            <span className="step-num">A</span>
             <h2>Pistes de réflexion</h2>
           </div>
           <p className="hero-sub mb-4" style={{ fontSize: '0.97rem' }}>
@@ -560,7 +560,7 @@ function App() {
               {/* --- ÉTAPE 2 --- */}
               <div ref={part2Ref} className="mb-5" style={{ opacity: step2Ready ? 1 : 0.5, pointerEvents: step2Ready ? 'auto' : 'none', transition: 'opacity 0.4s ease' }}>
                 <div className="step-head">
-                  <span className="step-num s2">2</span>
+                  <span className="step-num s2">B</span>
                   <h2>Quelle licence Creative Commons choisir ?</h2>
                 </div>
 
