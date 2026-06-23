@@ -491,7 +491,7 @@ function App() {
                 {/* Aspects légaux */}
                 <div className="panel">
                   <h3 className="panel-title">Aspects légaux obligatoires</h3>
-                  <p className="panel-cap">Un seul « non » ou « à valider » suffit à suspendre le partage. À régler en priorité.</p>
+                  <p className="panel-cap">Les réponses <span>« oui »</span> et  <span>« à valider »</span> vous permettent de continuer vos réflexions. Un seul  <span>« non »</span> ne permet pas d’utiliser le générateur de licence, afin de vous permettre d’ajuster cette situation.</p>
                   <div className="legal-meter">
                     <div className="lm-track">
                       <div className={`lm-fill ${legalConcern ? 'concern' : ''}`} style={{ width: `${(legalOui / LEGAL_ITEMS.length) * 100}%` }}></div>
