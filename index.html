@@ -24,25 +24,26 @@ const { useState, useEffect, useRef } = React;
 
 const THEMES = {
   potentiel: { id: 'potentiel', title: "Potentiel de réutilisation", desc: "Plus vous cochez, plus la ressource gagne en valeur partagée. Rien n'est obligatoire.", items: [
-      { id: 'p1', label: "Adaptation rapide possible par un tiers." },
-      { id: 'p2', label: "Apporte une réelle nouveauté (outil, méthode, donnée)." },
-      { id: 'p3', label: "Le contenu est durable dans le temps." },
-      { id: 'p4', label: "Fichiers sources dans des formats ouverts/répandus." }
+      { id: 'p1', label: "La ressource, dans sa version actuelle, pourrait être utile à une autre personne en l’adaptant facilement à son propre contexte" },
+      { id: 'p2', label: "La ressource propose un contenu pérenne : présente une stratégie, un processus ou des données et informations relativement stables dans le temps" },
+      { id: 'p3', label: "Les fichiers sources sont dans des formats facilement modifiables avec des logiciels répandus" },
+      { id: 'p4', label: "Le potentiel de réutilisation justifie l’espace de stockage lié au partage de cette ressource (sobriété numérique)" }
   ]},
   qualite: { id: 'qualite', title: "Qualité", desc: "Le niveau de finition attendu dépend de l'usage visé.", items: [
-      { id: 'q1', label: "Relecture critique effectuée par un(e) pair." },
-      { id: 'q2', label: "Ressource aboutie et utile en l'état." },
-      { id: 'q3', label: "Versionnage prévu pour les mises à jour." },
-      { id: 'q4', label: <>Respect des <a href="https://zenodo.org/records/14963025" target="_blank" rel="noopener noreferrer">Balises éditoriales du SSF</a>.</> }
+      { id: 'q1', label: "La ressource a fait l’objet d’une relecture critique par un ou une collègue" },
+      { id: 'q2', label: "L’état d’avancement de la ressource est suffisant pour la partager" },
+      { id: 'q3', label: "Une approche par versionnage est prévue dans le cas de projet d’envergure" },
+      { id: 'q4', label: <> La ressource respecte-ou considère les  <a href="https://zenodo.org/records/14963025" target="_blank" rel="noopener noreferrer">Balises éditoriales du SSF</a>.</> }
   ]},
   rayon: { id: 'rayon', title: "Rayonnement", desc: "Ce que le partage fait gagner, au-delà de la ressource elle-même.", items: [
-      { id: 'r1', label: "Contribue à la réputation de l'auteur et de l'UdeS." },
-      { id: 'r2', label: "Inspire plus largement la communauté éducative." }
+      { id: 'r1', label: "La ressource contribue au rayonnement du SSF, d’un centre ou d’une faculté, de l’Université de Sherbrooke ou de la personne autrice" },
+      { id: 'r2', label: "La ressource pourrait inspirer plus largement la communauté éducative francophone" }
   ]}
 };
 
 const LEGAL_ITEMS = [
-  { id: 'droit', label: "Propriété intellectuelle", desc: <>Respecte la Loi canadienne sur le droit d'auteur et la <a href="https://www.usherbrooke.ca/decouvrir/fileadmin/sites/decouvrir/documents/direction/politiques/2500-049.pdf" target="_blank" rel="noopener noreferrer">Politique sur la propriété intellectuelle</a> de l'UdeS.</> },
+  { id: 'droit', label: "Propriété intellectuelle", desc: <>La ressource respecte la 
+<a href=" https://laws-lois.justice.gc.ca/fra/lois/c-42/ " target="_blank" rel="noopener noreferrer"> Loi canadienne sur le droit d'auteur</a> ainsi que la <a href="https://www.usherbrooke.ca/decouvrir/fileadmin/sites/decouvrir/documents/direction/politiques/2500-049.pdf" target="_blank" rel="noopener noreferrer">Politique sur la propriété intellectuelle</a> de l'UdeS.</> },
   { id: 'licence', label: "Compatibilité des licences", desc: "Les contenus tiers intégrés permettent la diffusion sous CC BY." },
   { id: 'ethique', label: "Éthique et sensibilité", desc: "Absence de données sensibles ou enjeux validés." },
   { id: 'consent', label: "Consentements", desc: "Obtenus pour les collaborations ou captations." }
